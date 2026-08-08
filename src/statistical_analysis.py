@@ -26,6 +26,8 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
 
 변경 사항
 - 2026년 5월 데이터만 사용
+- 출근 시간 정의: 06:00 ~ 10:00
+- 퇴근 시간 정의: 16:00 ~ 20:00
 """
 
 from __future__ import annotations
@@ -50,6 +52,16 @@ ALPHA = 0.05
 
 
 # 통계 분석에 필요한 컬럼만 읽기
+# ANALYSIS_COLUMNS = [
+#     "tpep_pickup_datetime",
+#     "trip_duration_min",
+#     "trip_distance",
+#     "fare_amount",
+#     "total_amount",
+#     "extra",
+# ]
+
+# 극단치 고려
 ANALYSIS_COLUMNS = [
     "tpep_pickup_datetime",
     "trip_duration_min",
@@ -57,6 +69,9 @@ ANALYSIS_COLUMNS = [
     "fare_amount",
     "total_amount",
     "extra",
+    "is_long_trip_candidate",
+    "is_large_distance_candidate",
+    "is_large_fare_candidate",
 ]
 
 
@@ -80,11 +95,23 @@ HOLIDAYS = {
 #     "evening": (16, 20),  # 16:00 <= hour < 20:00
 # }
 #
-# 2026-08-08:
 # 현재는 아직 시간대를 확정하지 않았으므로 비워 두고
 # Discovery 분석까지만 실행
+#
+# 2026-08-08:
+# 출근 시간 정의: 06:00 ~ 10:00
+# - 외부 자료 참고하여 06:30 ~ 09:30을 후보 범위로 설정
+# - 시간 단위 분석을 위해 06:00 ~ 10:00으로 확장
+# - 해당 시간대의 평일 운행량이 모두 주말보다 높게 나타남
+# 퇴근 시간 정의: 16:00 ~ 20:00
+# - TLC 공식 평일 러시아워 정책
+# - 해당 시간대에 extra 분포에서도 정책 패턴 확인
 
-COMMUTE_WINDOWS: dict[str, tuple[int, int]] = {}
+
+COMMUTE_WINDOWS = {
+    "morning": (6, 10),
+    "evening": (16, 20),
+}
 
 
 # =========================================================
@@ -815,20 +842,50 @@ def main() -> int:
 
         validation_business = validation_df.loc[validation_df["is_business_day"]].copy()
 
-        validation_business = add_commute_features(validation_business)
+        # -------------------------------------------------
+        # 기존 EDA 단계에서 정의된 극단값 후보 제외
+        # -------------------------------------------------
 
-        validation_business = add_speed(validation_business)
+        candidate_columns = [
+            "is_long_trip_candidate",
+            "is_large_distance_candidate",
+            "is_large_fare_candidate",
+        ]
 
-        print("\n[확정된 출퇴근 시간대]")
+        candidate_mask = (
+            validation_business[candidate_columns]
+            .fillna(False)
+            .astype(bool)
+            .any(axis=1)
+        )
 
-        for name, window in COMMUTE_WINDOWS.items():
-            print(f"- {name}: " f"{window[0]:02d}:00 " f"~ {window[1]:02d}:00")
+        print("\n[Validation 극단값 후보 제외]")
+        print(f"제외 전: {len(validation_business):,}행")
+
+        for column in candidate_columns:
+            count = validation_business[column].fillna(False).astype(bool).sum()
+
+            print(f"- {column}: {count:,}행")
+
+        print(f"- 중복을 제거한 실제 제외 대상: " f"{candidate_mask.sum():,}행")
+
+        validation_analysis = validation_business.loc[~candidate_mask].copy()
+
+        print(f"제외 후: {len(validation_analysis):,}행")
+
+        # -------------------------------------------------
+        # 출퇴근 구분 및 평균 이동속도 생성
+        # -------------------------------------------------
+
+        validation_analysis = add_commute_features(validation_analysis)
+
+        validation_analysis = add_speed(validation_analysis)
 
         # -------------------------------------------------
         # 6. 기술통계
         # -------------------------------------------------
 
-        descriptive = make_descriptive_statistics(validation_business)
+        descriptive = make_descriptive_statistics(validation_analysis)
 
         save_result(
             descriptive,
@@ -843,7 +900,7 @@ def main() -> int:
         # 7. 상관계수
         # -------------------------------------------------
 
-        correlation = make_correlation_matrix(validation_business)
+        correlation = make_correlation_matrix(validation_analysis)
 
         save_result(
             correlation,
@@ -857,7 +914,7 @@ def main() -> int:
         # 8. Welch's t-test
         # -------------------------------------------------
 
-        ttest_results = run_welch_ttests(validation_business)
+        ttest_results = run_welch_ttests(validation_analysis)
 
         save_result(
             ttest_results,
