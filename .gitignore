@@ -223,5 +223,9 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+# 코드 실행으로 재생성 가능한 리포트·차트 산출물 (재현성: README 실행 가이드로 대체)
+reports/generated/*
+!reports/generated/data_quality_report.md
+
 # macOS metadata
 .DS_Store
