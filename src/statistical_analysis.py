@@ -36,7 +36,7 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
   상광분석, 기술통계 변수에서 속도 제외
 - TTEST에 trip_distance 추가
 - 거리 통제 다변량 회귀 및 Partial F-test 추가
-- RatecodeID 추가 (일반운행만 필터링용)
+- 출퇴근 시간 전처리 된 것으로 사용
 """
 
 from __future__ import annotations
@@ -71,15 +71,19 @@ ALPHA = 0.05
 #     "extra",
 # ]
 
-# 극단치 고려
+# 극단치 및 출퇴근 시간 고려
 ANALYSIS_COLUMNS = [
     "tpep_pickup_datetime",
+    "pickup_hour",
+    "is_weekday",
+    "is_rush_hour",
+    "rush_period",
+    "weekday_comparison_group",
     "trip_duration_min",
     "trip_distance",
     "fare_amount",
     "total_amount",
     "extra",
-    "RatecodeID",
     "is_long_trip_candidate",
     "is_large_distance_candidate",
     "is_large_fare_candidate",
@@ -91,26 +95,6 @@ ANALYSIS_COLUMNS = [
 # 주말 취급?
 HOLIDAYS = {
     pd.Timestamp("2026-05-25"),
-}
-
-
-# =========================================================
-# 출퇴근 시간대 설정
-# =========================================================
-#
-# 출근 시간: 06:00 ~ 10:00
-# - 외부 자료의 주요 출근 시간 06:30 ~ 09:30 참고
-# - 시간 단위 분석을 위해 06:00 ~ 10:00으로 확장
-# - Discovery 데이터에서도 평일 운행량 증가 확인
-#
-# 퇴근 시간: 16:00 ~ 20:00
-# - TLC 공식 평일 러시아워 기준
-# - Discovery extra 분포에서도 정책 패턴 확인
-
-
-COMMUTE_WINDOWS = {
-    "morning": (6, 10),
-    "evening": (16, 20),
 }
 
 
@@ -138,6 +122,12 @@ TTEST_COLUMNS = [
     "trip_duration_min",
     "fare_amount",
     "total_amount",
+]
+
+RUSH_PERIOD_GROUPS = [
+    "morning_rush",
+    "evening_rush",
+    "weekday_non_rush",
 ]
 
 
@@ -200,37 +190,20 @@ def add_calendar_features(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    날짜 단위 분할과 평일/주말 비교를 위한
-    시간 관련 파생변수를 생성한다.
+    날짜 기준 분할과 공휴일 제외를 위한
+    분석용 파생변수를 생성한다.
+
+    pickup_hour, is_weekday, rush_period 등의
+    출퇴근 관련 변수는 prepare_data.py 결과를 그대로 사용한다.
     """
 
     result = df.copy()
 
     result["pickup_date"] = result["tpep_pickup_datetime"].dt.normalize()
 
-    result["pickup_hour"] = result["tpep_pickup_datetime"].dt.hour
-
-    result["is_weekday"] = result["tpep_pickup_datetime"].dt.dayofweek < 5
-
     result["is_holiday"] = result["pickup_date"].isin(HOLIDAYS)
 
-    # 일반적인 통근 분석 대상으로 사용할 영업일
     result["is_business_day"] = result["is_weekday"] & ~result["is_holiday"]
-
-    # # 공휴일 주말 취급할지말지
-    # result["day_type"] = "business_day"
-
-    # result.loc[
-    #     ~result["is_weekday"],
-    #     "day_type",
-    # ] = "weekend"
-
-    # result.loc[
-    #     result["is_holiday"],
-    #     "day_type",
-    # ] = "holiday"
-
-    # result["is_non_business_day"] = ~result["is_business_day"]
 
     return result
 
@@ -497,51 +470,51 @@ def make_extra_distribution(
 # =========================================================
 
 
-def validate_commute_windows() -> None:
-    """
-    출퇴근 시간 설정값이 정상적인지 확인한다.
-    """
+# def validate_commute_windows() -> None:
+#     """
+#     출퇴근 시간 설정값이 정상적인지 확인한다.
+#     """
 
-    for name, (start, end) in COMMUTE_WINDOWS.items():
-        if not (0 <= start < end <= 24):
-            raise ValueError(f"{name} 시간 범위가 잘못되었습니다: " f"({start}, {end})")
+#     for name, (start, end) in COMMUTE_WINDOWS.items():
+#         if not (0 <= start < end <= 24):
+#             raise ValueError(f"{name} 시간 범위가 잘못되었습니다: " f"({start}, {end})")
 
 
-def add_commute_features(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    확정된 출퇴근 시간대를 Validation 데이터에 적용한다.
-    """
+# def add_commute_features(
+#     df: pd.DataFrame,
+# ) -> pd.DataFrame:
+#     """
+#     확정된 출퇴근 시간대를 Validation 데이터에 적용한다.
+#     """
 
-    validate_commute_windows()
+#     validate_commute_windows()
 
-    result = df.copy()
+#     result = df.copy()
 
-    result["is_commute_hour"] = False
-    result["commute_period"] = "non_commute"
+#     result["is_commute_hour"] = False
+#     result["commute_period"] = "non_commute"
 
-    for name, (start, end) in COMMUTE_WINDOWS.items():
-        mask = result["pickup_hour"].ge(start) & result["pickup_hour"].lt(end)
+#     for name, (start, end) in COMMUTE_WINDOWS.items():
+#         mask = result["pickup_hour"].ge(start) & result["pickup_hour"].lt(end)
 
-        result.loc[
-            mask,
-            "is_commute_hour",
-        ] = True
+#         result.loc[
+#             mask,
+#             "is_commute_hour",
+#         ] = True
 
-        result.loc[
-            mask,
-            "commute_period",
-        ] = name
+#         result.loc[
+#             mask,
+#             "commute_period",
+#         ] = name
 
-    result["commute_group"] = result["is_commute_hour"].map(
-        {
-            True: "commute",
-            False: "non_commute",
-        }
-    )
+#     result["commute_group"] = result["is_commute_hour"].map(
+#         {
+#             True: "commute",
+#             False: "non_commute",
+#         }
+#     )
 
-    return result
+#     return result
 
 
 # def add_speed(
@@ -562,7 +535,7 @@ def add_commute_features(
 
 
 # =========================================================
-# 기술통계
+# 평일 출퇴근 / 평일 비출퇴근 그룹별 기술통계
 # =========================================================
 
 
@@ -572,9 +545,25 @@ def make_descriptive_statistics(
     """
     출퇴근 / 비출퇴근 그룹별 기술통계를 산출한다.
     """
-
     return (
-        df.groupby("commute_group")[DESCRIPTIVE_COLUMNS]
+        df.groupby("weekday_comparison_group")[DESCRIPTIVE_COLUMNS]
+        .describe(percentiles=[0.25, 0.50, 0.75])
+        .round(4)
+    )
+
+
+def make_rush_period_descriptive_statistics(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    오전 출퇴근, 오후 출퇴근,
+    평일 비출퇴근 시간대의 기술통계를 산출한다.
+    """
+
+    period_df = df.loc[df["rush_period"].isin(RUSH_PERIOD_GROUPS)].copy()
+
+    result = (
+        period_df.groupby("rush_period")[DESCRIPTIVE_COLUMNS]
         .describe(
             percentiles=[
                 0.25,
@@ -584,6 +573,8 @@ def make_descriptive_statistics(
         )
         .round(4)
     )
+
+    return result.reindex(RUSH_PERIOD_GROUPS)
 
 
 # =========================================================
@@ -610,25 +601,25 @@ def run_welch_ttests(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    출퇴근 시간대와 비출퇴근 시간대의 평균 차이를
-    Welch's independent t-test로 검정한다.
+    평일 출퇴근 시간대와 평일 비출퇴근 시간대의
+    평균 차이를 Welch's independent t-test로 검정한다.
     """
 
     results: list[dict[str, object]] = []
 
     for column in TTEST_COLUMNS:
         commute = df.loc[
-            df["is_commute_hour"],
+            df["weekday_comparison_group"].eq("weekday_rush"),
             column,
         ].dropna()
 
         non_commute = df.loc[
-            ~df["is_commute_hour"],
+            df["weekday_comparison_group"].eq("weekday_non_rush"),
             column,
         ].dropna()
 
         if len(commute) < 2 or len(non_commute) < 2:
-            raise ValueError(f"{column}: t-test에 필요한 " "표본 수가 부족합니다.")
+            raise ValueError(f"{column}: t-test에 필요한 표본 수가 부족합니다.")
 
         test_result = ttest_ind(
             commute,
@@ -638,15 +629,12 @@ def run_welch_ttests(
         )
 
         t_statistic = float(test_result.statistic)
-
         p_value = float(test_result.pvalue)
 
         commute_mean = float(commute.mean())
-
         non_commute_mean = float(non_commute.mean())
 
         mean_difference = commute_mean - non_commute_mean
-
         reject_h0 = p_value < ALPHA
 
         results.append(
@@ -655,8 +643,8 @@ def run_welch_ttests(
                 "commute_n": len(commute),
                 "non_commute_n": len(non_commute),
                 "commute_mean": commute_mean,
-                "non_commute_mean": (non_commute_mean),
-                "mean_difference": (mean_difference),
+                "non_commute_mean": non_commute_mean,
+                "mean_difference": mean_difference,
                 "t_statistic": t_statistic,
                 "p_value": p_value,
                 "alpha": ALPHA,
@@ -664,7 +652,7 @@ def run_welch_ttests(
                 "interpretation": (
                     "통계적으로 유의한 평균 차이"
                     if reject_h0
-                    else "통계적으로 유의한 " "평균 차이를 확인하지 못함"
+                    else "통계적으로 유의한 평균 차이를 확인하지 못함"
                 ),
             }
         )
@@ -688,7 +676,8 @@ def run_distance_adjusted_regression(
         trip_duration_min ~ trip_distance
 
     Full model:
-        trip_duration_min ~ trip_distance + is_commute_hour
+        trip_duration_min
+            ~ trip_distance + is_rush_hour
 
     두 nested model을 Partial F-test로 비교한다.
     """
@@ -698,7 +687,7 @@ def run_distance_adjusted_regression(
             [
                 "trip_duration_min",
                 "trip_distance",
-                "is_commute_hour",
+                "is_rush_hour",
             ]
         ]
         .dropna()
@@ -709,7 +698,7 @@ def run_distance_adjusted_regression(
         raise ValueError("거리 통제 회귀분석에 필요한 표본 수가 부족합니다.")
 
     # bool 값을 회귀분석용 0/1 변수로 변환
-    analysis_df["is_commute_hour"] = analysis_df["is_commute_hour"].astype(int)
+    analysis_df["is_rush_hour"] = analysis_df["is_rush_hour"].astype(int)
 
     y = analysis_df["trip_duration_min"]
 
@@ -740,7 +729,7 @@ def run_distance_adjusted_regression(
         analysis_df[
             [
                 "trip_distance",
-                "is_commute_hour",
+                "is_rush_hour",
             ]
         ]
     )
@@ -759,9 +748,9 @@ def run_distance_adjusted_regression(
     f_statistic, p_value, df_difference = full_model.compare_f_test(reduced_model)
 
     # 출퇴근 여부 회귀계수와 95% 신뢰구간
-    rush_coefficient = float(full_model.params["is_commute_hour"])
+    rush_coefficient = float(full_model.params["is_rush_hour"])
 
-    confidence_interval = full_model.conf_int(alpha=ALPHA).loc["is_commute_hour"]
+    confidence_interval = full_model.conf_int(alpha=ALPHA).loc["is_rush_hour"]
 
     ci_low = float(confidence_interval.iloc[0])
     ci_high = float(confidence_interval.iloc[1])
@@ -802,24 +791,195 @@ def run_distance_adjusted_regression(
 
 
 # =========================================================
-# Standard rate 민감도 분석 준비
+# 오전 / 오후 거리 통제 다변량 회귀 및 Partial F-test
 # =========================================================
 
 
-def filter_standard_rate(
+def run_period_distance_adjusted_regression(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    RatecodeID == 1인 Standard rate 운행만 선택한다.
+    이동거리를 통제한 상태에서 오전 및 오후 출퇴근 시간대가
+    평일 비출퇴근 시간대와 비교해 이동시간 설명에
+    추가적인 정보를 제공하는지 검정한다.
 
-    특수 요금 체계가 기존 출퇴근 / 비출퇴근 비교 결과에
-    영향을 주었는지 확인하기 위한 민감도 분석에 사용한다.
+    기준 그룹:
+        weekday_non_rush
+
+    Reduced model:
+        trip_duration_min ~ trip_distance
+
+    Full model:
+        trip_duration_min
+        ~ trip_distance
+        + morning_rush
+        + evening_rush
+
+    Partial F-test:
+        morning_rush와 evening_rush를 함께 추가했을 때
+        전체적인 설명력 향상 여부를 검정한다.
     """
 
-    result = df.loc[df["RatecodeID"] == 1].copy()
+    analysis_df = (
+        df[
+            [
+                "trip_duration_min",
+                "trip_distance",
+                "rush_period",
+            ]
+        ]
+        .dropna()
+        .copy()
+    )
 
-    if result.empty:
-        raise ValueError("RatecodeID == 1인 Standard rate 데이터가 없습니다.")
+    analysis_df = analysis_df.loc[
+        analysis_df["rush_period"].isin(RUSH_PERIOD_GROUPS)
+    ].copy()
+
+    if len(analysis_df) < 4:
+        raise ValueError(
+            "오전/오후 거리 통제 회귀분석에 " "필요한 표본 수가 부족합니다."
+        )
+
+    # -----------------------------------------------------
+    # 기준 그룹: weekday_non_rush
+    #
+    # weekday_non_rush -> morning=0, evening=0
+    # morning_rush     -> morning=1, evening=0
+    # evening_rush     -> morning=0, evening=1
+    # -----------------------------------------------------
+
+    analysis_df["morning_rush"] = (
+        analysis_df["rush_period"].eq("morning_rush").astype(int)
+    )
+
+    analysis_df["evening_rush"] = (
+        analysis_df["rush_period"].eq("evening_rush").astype(int)
+    )
+
+    y = analysis_df["trip_duration_min"]
+
+    # -----------------------------------------------------
+    # Reduced model
+    # duration ~ distance
+    # -----------------------------------------------------
+
+    reduced_x = sm.add_constant(
+        analysis_df[
+            [
+                "trip_distance",
+            ]
+        ]
+    )
+
+    reduced_model = sm.OLS(
+        y,
+        reduced_x,
+    ).fit()
+
+    # -----------------------------------------------------
+    # Full model
+    #
+    # duration
+    #   ~ distance
+    #   + morning_rush
+    #   + evening_rush
+    # -----------------------------------------------------
+
+    full_x = sm.add_constant(
+        analysis_df[
+            [
+                "trip_distance",
+                "morning_rush",
+                "evening_rush",
+            ]
+        ]
+    )
+
+    full_model = sm.OLS(
+        y,
+        full_x,
+    ).fit()
+
+    # -----------------------------------------------------
+    # Partial F-test
+    # morning / evening 변수를 함께 추가한 효과
+    # -----------------------------------------------------
+
+    f_statistic, p_value, df_difference = full_model.compare_f_test(reduced_model)
+
+    # -----------------------------------------------------
+    # 개별 회귀계수
+    # -----------------------------------------------------
+
+    morning_coefficient = float(full_model.params["morning_rush"])
+
+    evening_coefficient = float(full_model.params["evening_rush"])
+
+    morning_p_value = float(full_model.pvalues["morning_rush"])
+
+    evening_p_value = float(full_model.pvalues["evening_rush"])
+
+    # -----------------------------------------------------
+    # 95% 신뢰구간
+    # -----------------------------------------------------
+
+    confidence_intervals = full_model.conf_int(alpha=ALPHA)
+
+    morning_ci = confidence_intervals.loc["morning_rush"]
+
+    evening_ci = confidence_intervals.loc["evening_rush"]
+
+    # -----------------------------------------------------
+    # 설명력
+    # -----------------------------------------------------
+
+    reduced_r2 = float(reduced_model.rsquared)
+
+    full_r2 = float(full_model.rsquared)
+
+    delta_r2 = full_r2 - reduced_r2
+
+    reject_h0 = float(p_value) < ALPHA
+
+    # -----------------------------------------------------
+    # 결과 정리
+    # -----------------------------------------------------
+
+    result = pd.DataFrame(
+        [
+            {
+                "target": "trip_duration_min",
+                "n": len(analysis_df),
+                "reference_group": "weekday_non_rush",
+                "reduced_r2": reduced_r2,
+                "full_r2": full_r2,
+                "delta_r2": delta_r2,
+                "distance_coefficient": float(full_model.params["trip_distance"]),
+                "morning_coefficient": (morning_coefficient),
+                "morning_ci_low": float(morning_ci.iloc[0]),
+                "morning_ci_high": float(morning_ci.iloc[1]),
+                "morning_p_value": (morning_p_value),
+                "evening_coefficient": (evening_coefficient),
+                "evening_ci_low": float(evening_ci.iloc[0]),
+                "evening_ci_high": float(evening_ci.iloc[1]),
+                "evening_p_value": (evening_p_value),
+                "partial_f_statistic": float(f_statistic),
+                "df_difference": float(df_difference),
+                "partial_f_p_value": float(p_value),
+                "alpha": ALPHA,
+                "reject_h0": reject_h0,
+                "interpretation": (
+                    "오전/오후 출퇴근 시간대 추가 효과는 "
+                    "전체적으로 통계적으로 유의함"
+                    if reject_h0
+                    else "오전/오후 출퇴근 시간대의 "
+                    "통계적으로 유의한 추가 효과를 "
+                    "확인하지 못함"
+                ),
+            }
+        ]
+    )
 
     return result
 
@@ -960,25 +1120,6 @@ def main() -> int:
         )
 
         # -------------------------------------------------
-        # 출퇴근 시간대가 아직 확정되지 않았다면
-        # Validation 데이터는 분석하지 않는다.
-        # -------------------------------------------------
-
-        if not COMMUTE_WINDOWS:
-            print(
-                "\nCOMMUTE_WINDOWS가 비어 있으므로 "
-                "Validation 분석은 실행하지 않습니다."
-            )
-
-            print(
-                "이는 Validation 데이터를 먼저 보고 "
-                "출퇴근 시간대를 수정하는 "
-                "데이터 스누핑을 방지하기 위한 것입니다."
-            )
-
-            return 0
-
-        # -------------------------------------------------
         # 5. Validation 분석
         # -------------------------------------------------
         #
@@ -1024,7 +1165,7 @@ def main() -> int:
         # 출퇴근 구분
         # -------------------------------------------------
 
-        validation_analysis = add_commute_features(validation_analysis)
+        # validation_analysis = add_commute_features(validation_analysis)
 
         # validation_analysis = add_speed(validation_analysis)
 
@@ -1043,6 +1184,24 @@ def main() -> int:
         print("\n[출퇴근 / 비출퇴근 기술통계]")
 
         print(descriptive)
+
+        # -------------------------------------------------
+        # 6-1. 오전 / 오후 / 평일 비출퇴근 기술통계
+        # -------------------------------------------------
+
+        rush_period_descriptive = make_rush_period_descriptive_statistics(
+            validation_analysis
+        )
+
+        save_result(
+            rush_period_descriptive,
+            args.output_dir / "rush_period_descriptive_statistics.csv",
+            index=True,
+        )
+
+        print("\n[오전 / 오후 / 평일 비출퇴근 기술통계]")
+
+        print(rush_period_descriptive)
 
         # -------------------------------------------------
         # 7. 상관계수
@@ -1088,61 +1247,26 @@ def main() -> int:
 
         print(regression_result.to_string(index=False))
 
+        # -------------------------------------------------
+        # 9-1. 오전 / 오후 거리 통제 다변량 회귀
+        # -------------------------------------------------
+
+        period_regression_result = run_period_distance_adjusted_regression(
+            validation_analysis
+        )
+
+        save_result(
+            period_regression_result,
+            args.output_dir / "rush_period_distance_adjusted_regression.csv",
+        )
+
+        print("\n[오전 / 오후 거리 통제 다변량 회귀 " "/ Partial F-test]")
+
+        print(period_regression_result.to_string(index=False))
+
         print("\n통계 분석 결과 저장 완료:")
 
         print(args.output_dir)
-
-        # -------------------------------------------------
-        # 10. RatecodeID == 1 민감도 분석
-        # -------------------------------------------------
-
-        standard_rate_analysis = filter_standard_rate(validation_analysis)
-
-        print("\n[RatecodeID == 1 민감도 분석]")
-        print(f"전체 Validation 분석 표본: " f"{len(validation_analysis):,}행")
-        print(f"Standard rate 표본: " f"{len(standard_rate_analysis):,}행")
-        print(
-            f"Standard rate 비율: "
-            f"{len(standard_rate_analysis) / len(validation_analysis):.2%}"
-        )
-
-        standard_descriptive = make_descriptive_statistics(standard_rate_analysis)
-
-        save_result(
-            standard_descriptive,
-            args.output_dir / "standard_rate_descriptive_statistics.csv",
-            index=True,
-        )
-        standard_group_counts = standard_rate_analysis["commute_group"].value_counts()
-
-        print("\n[Standard rate 그룹별 표본 수]")
-        print(standard_group_counts)
-
-        print("\n[Standard rate - 기술통계]")
-        print(standard_descriptive)
-
-        standard_ttest_results = run_welch_ttests(standard_rate_analysis)
-
-        save_result(
-            standard_ttest_results,
-            args.output_dir / "standard_rate_welch_ttest_results.csv",
-        )
-
-        print("\n[Standard rate - Welch's t-test]")
-        print(standard_ttest_results.to_string(index=False))
-
-        standard_regression_result = run_distance_adjusted_regression(
-            standard_rate_analysis
-        )
-
-        save_result(
-            standard_regression_result,
-            args.output_dir / "standard_rate_distance_adjusted_regression.csv",
-        )
-
-        print("\n[Standard rate - " "거리 통제 다변량 회귀 / Partial F-test]")
-
-        print(standard_regression_result.to_string(index=False))
 
         return 0
 
