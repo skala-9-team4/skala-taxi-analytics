@@ -34,6 +34,9 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
 - 운행시간 이상치 때문에 속도 오염
   이상치 필터링 하는 것 보다
   상광분석, 기술통계 변수에서 속도 제외
+- TTEST에 trip_distance 추가
+- 거리 통제 다변량 회귀 및 Partial F-test 추가
+- RatecodeID 추가 (일반운행만 필터링용)
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ from pathlib import Path
 
 import pandas as pd
 from scipy.stats import ttest_ind
+import statsmodels.api as sm
 
 # =========================================================
 # 기본 설정
@@ -75,6 +79,7 @@ ANALYSIS_COLUMNS = [
     "fare_amount",
     "total_amount",
     "extra",
+    "RatecodeID",
     "is_long_trip_candidate",
     "is_large_distance_candidate",
     "is_large_fare_candidate",
@@ -129,6 +134,7 @@ CORRELATION_COLUMNS = [
 ]
 
 TTEST_COLUMNS = [
+    "trip_distance",
     "trip_duration_min",
     "fare_amount",
     "total_amount",
@@ -538,21 +544,21 @@ def add_commute_features(
     return result
 
 
-def add_speed(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    이동거리와 이동시간을 이용해 평균 이동속도(mph)를 계산한다.
+# def add_speed(
+#     df: pd.DataFrame,
+# ) -> pd.DataFrame:
+#     """
+#     이동거리와 이동시간을 이용해 평균 이동속도(mph)를 계산한다.
 
-    speed_mph는 출퇴근 시간대 선정에는 사용하지 않고
-    Validation 결과 해석에만 사용한다.
-    """
+#     speed_mph는 출퇴근 시간대 선정에는 사용하지 않고
+#     Validation 결과 해석에만 사용한다.
+#     """
 
-    result = df.copy()
+#     result = df.copy()
 
-    result["speed_mph"] = result["trip_distance"] / (result["trip_duration_min"] / 60)
+#     result["speed_mph"] = result["trip_distance"] / (result["trip_duration_min"] / 60)
 
-    return result
+#     return result
 
 
 # =========================================================
@@ -664,6 +670,158 @@ def run_welch_ttests(
         )
 
     return pd.DataFrame(results)
+
+
+# =========================================================
+# 거리 통제 다변량 회귀 및 Partial F-test
+# =========================================================
+
+
+def run_distance_adjusted_regression(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    이동거리를 통제한 상태에서 출퇴근 시간대 여부가
+    이동시간 설명에 추가적인 정보를 제공하는지 검정한다.
+
+    Reduced model:
+        trip_duration_min ~ trip_distance
+
+    Full model:
+        trip_duration_min ~ trip_distance + is_commute_hour
+
+    두 nested model을 Partial F-test로 비교한다.
+    """
+
+    analysis_df = (
+        df[
+            [
+                "trip_duration_min",
+                "trip_distance",
+                "is_commute_hour",
+            ]
+        ]
+        .dropna()
+        .copy()
+    )
+
+    if len(analysis_df) < 3:
+        raise ValueError("거리 통제 회귀분석에 필요한 표본 수가 부족합니다.")
+
+    # bool 값을 회귀분석용 0/1 변수로 변환
+    analysis_df["is_commute_hour"] = analysis_df["is_commute_hour"].astype(int)
+
+    y = analysis_df["trip_duration_min"]
+
+    # -----------------------------------------------------
+    # Reduced model
+    # 이동거리만으로 이동시간 설명
+    # -----------------------------------------------------
+
+    reduced_x = sm.add_constant(
+        analysis_df[
+            [
+                "trip_distance",
+            ]
+        ]
+    )
+
+    reduced_model = sm.OLS(
+        y,
+        reduced_x,
+    ).fit()
+
+    # -----------------------------------------------------
+    # Full model
+    # 이동거리 + 출퇴근 여부로 이동시간 설명
+    # -----------------------------------------------------
+
+    full_x = sm.add_constant(
+        analysis_df[
+            [
+                "trip_distance",
+                "is_commute_hour",
+            ]
+        ]
+    )
+
+    full_model = sm.OLS(
+        y,
+        full_x,
+    ).fit()
+
+    # -----------------------------------------------------
+    # Partial F-test
+    # Full model이 Reduced model보다
+    # 유의하게 설명력을 개선하는지 검정
+    # -----------------------------------------------------
+
+    f_statistic, p_value, df_difference = full_model.compare_f_test(reduced_model)
+
+    # 출퇴근 여부 회귀계수와 95% 신뢰구간
+    rush_coefficient = float(full_model.params["is_commute_hour"])
+
+    confidence_interval = full_model.conf_int(alpha=ALPHA).loc["is_commute_hour"]
+
+    ci_low = float(confidence_interval.iloc[0])
+    ci_high = float(confidence_interval.iloc[1])
+
+    reduced_r2 = float(reduced_model.rsquared)
+    full_r2 = float(full_model.rsquared)
+    delta_r2 = full_r2 - reduced_r2
+
+    reject_h0 = float(p_value) < ALPHA
+
+    result = pd.DataFrame(
+        [
+            {
+                "target": "trip_duration_min",
+                "n": len(analysis_df),
+                "reduced_r2": reduced_r2,
+                "full_r2": full_r2,
+                "delta_r2": delta_r2,
+                "distance_coefficient": float(full_model.params["trip_distance"]),
+                "rush_coefficient": rush_coefficient,
+                "rush_ci_low": ci_low,
+                "rush_ci_high": ci_high,
+                "partial_f_statistic": float(f_statistic),
+                "df_difference": float(df_difference),
+                "p_value": float(p_value),
+                "alpha": ALPHA,
+                "reject_h0": reject_h0,
+                "interpretation": (
+                    "출퇴근 여부 추가 효과는 통계적으로 유의함"
+                    if reject_h0
+                    else "출퇴근 여부의 통계적으로 유의한 추가 효과를 확인하지 못함"
+                ),
+            }
+        ]
+    )
+
+    return result
+
+
+# =========================================================
+# Standard rate 민감도 분석 준비
+# =========================================================
+
+
+def filter_standard_rate(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    RatecodeID == 1인 Standard rate 운행만 선택한다.
+
+    특수 요금 체계가 기존 출퇴근 / 비출퇴근 비교 결과에
+    영향을 주었는지 확인하기 위한 민감도 분석에 사용한다.
+    """
+
+    result = df.loc[df["RatecodeID"] == 1].copy()
+
+    if result.empty:
+        raise ValueError("RatecodeID == 1인 Standard rate 데이터가 없습니다.")
+
+    return result
 
 
 # =========================================================
@@ -863,12 +1021,12 @@ def main() -> int:
         print(f"제외 후: {len(validation_analysis):,}행")
 
         # -------------------------------------------------
-        # 출퇴근 구분 및 평균 이동속도 생성
+        # 출퇴근 구분
         # -------------------------------------------------
 
         validation_analysis = add_commute_features(validation_analysis)
 
-        validation_analysis = add_speed(validation_analysis)
+        # validation_analysis = add_speed(validation_analysis)
 
         # -------------------------------------------------
         # 6. 기술통계
@@ -915,9 +1073,76 @@ def main() -> int:
         print("\n[Welch's t-test]")
         print(ttest_results.to_string(index=False))
 
+        # -------------------------------------------------
+        # 9. 거리 통제 다변량 회귀 / Partial F-test
+        # -------------------------------------------------
+
+        regression_result = run_distance_adjusted_regression(validation_analysis)
+
+        save_result(
+            regression_result,
+            args.output_dir / "distance_adjusted_regression.csv",
+        )
+
+        print("\n[거리 통제 다변량 회귀 / Partial F-test]")
+
+        print(regression_result.to_string(index=False))
+
         print("\n통계 분석 결과 저장 완료:")
 
         print(args.output_dir)
+
+        # -------------------------------------------------
+        # 10. RatecodeID == 1 민감도 분석
+        # -------------------------------------------------
+
+        standard_rate_analysis = filter_standard_rate(validation_analysis)
+
+        print("\n[RatecodeID == 1 민감도 분석]")
+        print(f"전체 Validation 분석 표본: " f"{len(validation_analysis):,}행")
+        print(f"Standard rate 표본: " f"{len(standard_rate_analysis):,}행")
+        print(
+            f"Standard rate 비율: "
+            f"{len(standard_rate_analysis) / len(validation_analysis):.2%}"
+        )
+
+        standard_descriptive = make_descriptive_statistics(standard_rate_analysis)
+
+        save_result(
+            standard_descriptive,
+            args.output_dir / "standard_rate_descriptive_statistics.csv",
+            index=True,
+        )
+        standard_group_counts = standard_rate_analysis["commute_group"].value_counts()
+
+        print("\n[Standard rate 그룹별 표본 수]")
+        print(standard_group_counts)
+
+        print("\n[Standard rate - 기술통계]")
+        print(standard_descriptive)
+
+        standard_ttest_results = run_welch_ttests(standard_rate_analysis)
+
+        save_result(
+            standard_ttest_results,
+            args.output_dir / "standard_rate_welch_ttest_results.csv",
+        )
+
+        print("\n[Standard rate - Welch's t-test]")
+        print(standard_ttest_results.to_string(index=False))
+
+        standard_regression_result = run_distance_adjusted_regression(
+            standard_rate_analysis
+        )
+
+        save_result(
+            standard_regression_result,
+            args.output_dir / "standard_rate_distance_adjusted_regression.csv",
+        )
+
+        print("\n[Standard rate - " "거리 통제 다변량 회귀 / Partial F-test]")
+
+        print(standard_regression_result.to_string(index=False))
 
         return 0
 
