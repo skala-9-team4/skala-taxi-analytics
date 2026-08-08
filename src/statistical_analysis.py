@@ -15,12 +15,12 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
 
 분석 원칙
 
-- 출퇴근 시간 탐색:
-  pickup_hour + 평일/주말 + 운행량만 사용
+- 출퇴근 시간대 설정:
+  외부 자료를 기준으로 오전·오후 출퇴근 시간대를 정의하고,
+  Discovery 데이터의 평일/주말 운행량과 extra 분포를 통해
+  실제 Yellow Taxi 데이터에서도 관련 패턴이 나타나는지 확인
 - 결과 검정:
   trip_duration_min, fare_amount, total_amount 사용
-- speed_mph:
-  출퇴근 시간 선정에는 사용하지 않고 결과 해석에서만 사용
 - 검정 대상:
   공휴일을 제외한 평일 운행만 사용
 
@@ -32,7 +32,8 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
   is_large_distance_candidate, is_large_fare_candidate]
   제외하고 다시 분석
 - 운행시간 이상치 때문에 속도 오염
-  이상치 필터링 하는 것 보다 상광분석 변수에서 속도 제외
+  이상치 필터링 하는 것 보다
+  상광분석, 기술통계 변수에서 속도 제외
 """
 
 from __future__ import annotations
@@ -92,25 +93,14 @@ HOLIDAYS = {
 # 출퇴근 시간대 설정
 # =========================================================
 #
-# Discovery 분석이 끝난 뒤 팀에서 시간대를 확정하면 입력
-# 예:
-#
-# COMMUTE_WINDOWS = {
-#     "morning": (7, 10),   # 07:00 <= hour < 10:00
-#     "evening": (16, 20),  # 16:00 <= hour < 20:00
-# }
-#
-# 현재는 아직 시간대를 확정하지 않았으므로 비워 두고
-# Discovery 분석까지만 실행
-#
-# 2026-08-08:
-# 출근 시간 정의: 06:00 ~ 10:00
-# - 외부 자료 참고하여 06:30 ~ 09:30을 후보 범위로 설정
+# 출근 시간: 06:00 ~ 10:00
+# - 외부 자료의 주요 출근 시간 06:30 ~ 09:30 참고
 # - 시간 단위 분석을 위해 06:00 ~ 10:00으로 확장
-# - 해당 시간대의 평일 운행량이 모두 주말보다 높게 나타남
-# 퇴근 시간 정의: 16:00 ~ 20:00
-# - TLC 공식 평일 러시아워 정책
-# - 해당 시간대에 extra 분포에서도 정책 패턴 확인
+# - Discovery 데이터에서도 평일 운행량 증가 확인
+#
+# 퇴근 시간: 16:00 ~ 20:00
+# - TLC 공식 평일 러시아워 기준
+# - Discovery extra 분포에서도 정책 패턴 확인
 
 
 COMMUTE_WINDOWS = {
@@ -126,7 +116,6 @@ COMMUTE_WINDOWS = {
 DESCRIPTIVE_COLUMNS = [
     "trip_distance",
     "trip_duration_min",
-    "speed_mph",
     "fare_amount",
     "total_amount",
 ]
@@ -165,13 +154,6 @@ def load_data(path: Path) -> pd.DataFrame:
         columns=ANALYSIS_COLUMNS,
     )
 
-    missing_columns = [
-        column for column in ANALYSIS_COLUMNS if column not in df.columns
-    ]
-
-    if missing_columns:
-        raise ValueError("필수 컬럼이 없습니다: " f"{missing_columns}")
-
     df["tpep_pickup_datetime"] = pd.to_datetime(
         df["tpep_pickup_datetime"],
         errors="coerce",
@@ -196,6 +178,9 @@ def load_data(path: Path) -> pd.DataFrame:
         (df["tpep_pickup_datetime"] >= analysis_start)
         & (df["tpep_pickup_datetime"] < analysis_end)
     ].copy()
+
+    if df.empty:
+        raise ValueError("2026년 5월 분석 대상 데이터가 없습니다.")
 
     return df
 
@@ -689,6 +674,7 @@ def run_welch_ttests(
 def save_result(
     df: pd.DataFrame,
     path: Path,
+    index: bool = False,
 ) -> None:
     """
     결과 DataFrame을 CSV 파일로 저장한다.
@@ -701,8 +687,8 @@ def save_result(
 
     df.to_csv(
         path,
-        index=True,
-        encoding="utf-8-sig",
+        index=index,
+        encoding="utf-8",
     )
 
 
@@ -811,9 +797,8 @@ def main() -> int:
         print("\nDiscovery 결과가 생성되었습니다.")
 
         print(
-            "시간별 운행량을 바탕으로 "
-            "출퇴근 시간 후보를 결정한 뒤 "
-            "COMMUTE_WINDOWS에 입력하세요."
+            "외부 자료로 설정한 출퇴근 시간대와 "
+            "Discovery 데이터의 패턴을 확인했습니다."
         )
 
         # -------------------------------------------------
@@ -894,6 +879,7 @@ def main() -> int:
         save_result(
             descriptive,
             args.output_dir / "descriptive_statistics.csv",
+            index=True,
         )
 
         print("\n[출퇴근 / 비출퇴근 기술통계]")
@@ -909,6 +895,7 @@ def main() -> int:
         save_result(
             correlation,
             args.output_dir / "correlation_matrix.csv",
+            index=True,
         )
 
         print("\n[상관계수]")
