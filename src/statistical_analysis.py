@@ -28,6 +28,11 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
 - 2026년 5월 데이터만 사용
 - 출근 시간 정의: 06:00 ~ 10:00
 - 퇴근 시간 정의: 16:00 ~ 20:00
+- 극단값 후보 [is_long_trip_candidate,
+  is_large_distance_candidate, is_large_fare_candidate]
+  제외하고 다시 분석
+- 운행시간 이상치 때문에 속도 오염
+  이상치 필터링 하는 것 보다 상광분석 변수에서 속도 제외
 """
 
 from __future__ import annotations
@@ -129,7 +134,6 @@ DESCRIPTIVE_COLUMNS = [
 CORRELATION_COLUMNS = [
     "trip_distance",
     "trip_duration_min",
-    "speed_mph",
     "fare_amount",
     "total_amount",
     "extra",
