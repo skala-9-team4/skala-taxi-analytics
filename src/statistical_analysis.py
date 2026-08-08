@@ -37,6 +37,7 @@ NYC Yellow Taxi 출퇴근 시간대 통계 분석
 - TTEST에 trip_distance 추가
 - 거리 통제 다변량 회귀 및 Partial F-test 추가
 - 출퇴근 시간 전처리 된 것으로 사용
+- 오전/오후 + 거리 통제 다변량 회귀 추가
 """
 
 from __future__ import annotations
