@@ -94,6 +94,23 @@ Pandas와 Polars의 구조·결측치뿐 아니라 앞·뒤 각 최대 5행과 s
 - 기존 이상치 후보를 제외해도 모든 파생 변수 극단값이 제거되는 것은 아닙니다. `fare_per_mile`과 `average_speed_mph`의 분포는 평균뿐 아니라 중앙값과 사분위수를 함께 확인하고, 현실적으로 해석하기 어려운 값은 포함·제외 결과를 비교해야 합니다.
 - 출퇴근 집단의 이동시간과 미터 운임 차이는 이동거리 차이를 함께 고려하여 해석해야 합니다.
 
+## 시각화 실행
+
+`data/processed/yellow_taxi_cleaned.parquet`가 준비된 뒤 실행합니다. 통계 파트(`statistical_analysis.py`)와 동일한 분석 범위(2026년 5월, 공휴일 제외, 이상치 후보 제외)를 적용해 두 파트의 결론이 어긋나지 않게 했습니다.
+
+```bash
+python src/visualization.py
+```
+
+기본 결과는 `reports/generated/visualizations/`에 생성됩니다.
+
+- `commute_duration_boxplot.png`: 출퇴근 시간대 3그룹(출근 러시/퇴근 러시/평일 비출퇴근)의 이동시간 분포 비교 (Seaborn)
+- `distance_duration_facet.png`: 시간대 구간별 이동거리-이동시간 관계 패널 비교 (Seaborn)
+- `hourly_duration_fare_trend.html`: 24시간 평균 이동시간·요금 추이, 출퇴근 구간 강조 (Plotly, 인터랙티브)
+- `distance_fare_scatter.html`: 시간대 구간별 이동거리-요금 관계 (Plotly, 인터랙티브)
+
+다른 경로가 필요하면 `--input`과 `--output-dir`을 사용합니다.
+
 ## 테스트
 
 ```bash
