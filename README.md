@@ -1,6 +1,6 @@
 # skala-taxi-analytics
 
-NYC Yellow Taxi의 출퇴근 시간대별 이동시간과 요금을 분석하는 프로젝트입니다. 현재 구현 범위는 원본 로딩, Pandas/Polars 비교, 기본 EDA와 데이터 정제까지입니다.
+NYC Yellow Taxi의 출퇴근 시간대별 이동시간과 요금을 분석하는 프로젝트입니다.
 
 ## 환경 설정 (macOS/Linux)
 
@@ -26,8 +26,8 @@ NYC TLC Yellow Taxi CSV 또는 Parquet 파일을 `data/raw/`에 둡니다. 원�
 
 ```bash
 mkdir -p data/raw data/processed
-curl -fL https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2025-01.parquet \
-  -o data/raw/yellow_tripdata_2025-01.parquet
+curl -fL https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2026-05.parque \
+  -o data/raw/yellow_tripdata_2026-05.parquet
 .venv/bin/python src/run_all.py
 .venv/bin/python src/run_all.py data/raw/yellow_tripdata_YYYY-MM.parquet
 .venv/bin/python src/run_all.py data/raw/yellow_tripdata_YYYY-MM.csv
@@ -48,7 +48,7 @@ python src/run_all.py
 인수 없이 실행하면 다음 파일을 기본 입력으로 사용합니다.
 
 ```bash
-data/raw/yellow_tripdata_2025-01.parquet
+data/raw/yellow_tripdata_2026-05.parquet
 ```
 
 다른 파일을 분석하려면 첫 번째 인수로 해당 파일 경로를 지정합니다. 위 URL은 이 저장소의 검증에 사용한 2025년 1월 예시입니다. 분석 대상 월이 정해지면 파일명과 URL의 월을 함께 변경합니다. 로딩 시간과 정제·EDA 시간은 한 프로세스에서 각 라이브러리를 한 번씩 측정한 참고값이며 OS 파일 캐시와 실행 환경에 따라 달라질 수 있습니다. 단일 실행 시간만으로 특정 라이브러리가 항상 더 빠르다고 단정하지 않습니다.
