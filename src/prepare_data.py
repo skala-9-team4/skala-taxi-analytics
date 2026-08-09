@@ -7,6 +7,8 @@
 # - Pandas·Polars의 독립적인 순차 로딩·EDA·정제와 정규화된 품질 결과 교차 검증을 구현
 # - 출퇴근 분류값을 명시하고 품질 요약 컬럼의 역할을 분명히 하며 파생 변수·품질 플래그를 추가
 # - 대용량 객체 해제, 검증 전 임시 저장과 실패 복구, 최종 확정 후 품질 보고서 생성을 반영
+# 2026-08-09:
+# - 기본 입력 경로를 공통 상수로 교체하고 명시적 경로 입력 기능을 유지
 
 from __future__ import annotations
 
@@ -21,6 +23,11 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 import polars as pl
+
+try:
+    from src.project_paths import DEFAULT_RAW_DATA
+except ModuleNotFoundError:  # 직접 스크립트로 실행할 때
+    from project_paths import DEFAULT_RAW_DATA
 
 REQUIRED_COLUMNS = {
     "tpep_pickup_datetime", "tpep_dropoff_datetime", "trip_distance", "fare_amount"
@@ -39,7 +46,7 @@ DATETIME_COLUMNS = ["tpep_pickup_datetime", "tpep_dropoff_datetime"]
 SAMPLE_SIZE = 5
 SAMPLE_SEED = 42
 TOP_CATEGORY_VALUES = 20
-DEFAULT_INPUT = Path("data/raw/yellow_tripdata_2025-01.parquet")
+DEFAULT_INPUT = DEFAULT_RAW_DATA
 STAT_COLUMNS = ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
 NORMALIZED_NUMERIC_COLUMNS = set(NUMERIC_COLUMNS + CODE_COLUMNS) | {
     "trip_duration_min", "pickup_hour", "fare_per_mile", "average_speed_mph",

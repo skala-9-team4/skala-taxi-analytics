@@ -9,6 +9,10 @@ NYC Yellow Taxi 전체 분석 파이프라인 자동 실행
 전처리 → 통계분석 → 시각화 → 머신러닝 → report.md 생성을 순차 실행한다.
 
 어느 단계에서든 실패하면 즉시 중단하여 뒤 단계가 오래된 산출물을 사용하지 않도록 한다.
+
+변경사항 내역
+2026-08-09(최지윤):
+- 전체 실행 파이프라인의 기본 입력 경로를 공통 상수로 교체
 """
 
 from __future__ import annotations
@@ -19,9 +23,14 @@ import sys
 from pathlib import Path
 from time import perf_counter
 
+try:
+    from src.project_paths import DEFAULT_RAW_DATA
+except ModuleNotFoundError:  # 직접 스크립트로 실행할 때
+    from project_paths import DEFAULT_RAW_DATA
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-DEFAULT_RAW_DATA = PROJECT_ROOT / "data/raw/yellow_tripdata_2026-05.parquet"
+DEFAULT_RAW_DATA = PROJECT_ROOT / DEFAULT_RAW_DATA
 CLEANED_DATA = PROJECT_ROOT / "data/processed/yellow_taxi_cleaned.parquet"
 DATA_QUALITY_REPORT = PROJECT_ROOT / "reports/generated/data_quality_report.md"
 STATISTICS_DIR = PROJECT_ROOT / "reports/generated/statistics"

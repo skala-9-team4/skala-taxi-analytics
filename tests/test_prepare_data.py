@@ -7,6 +7,8 @@
 # - Pandas·Polars의 순차 로딩, 결측·중복·정제·EDA 및 파생 변수 동등성 검증을 보완
 # - 시간대 목록 순서와 무관한 경계 분류, 품질 요약 컬럼, 비교 집단·품질 집계를 검증
 # - 비교 불일치와 단계별 예외에서 보고서·최종 결과 보존 및 임시 파일 정리를 검증
+# 2026-08-09:
+# - 두 실행 진입점의 공통 기본 경로 사용 여부를 검증하고 테스트 파일명을 갱신
 
 import inspect
 from pathlib import Path
@@ -44,6 +46,9 @@ from src.prepare_data import (
     verify,
     write_report,
 )
+from src.project_paths import DEFAULT_RAW_DATA
+from src.run_all import DEFAULT_RAW_DATA as RUN_ALL_DEFAULT_RAW_DATA
+from src.run_all import PROJECT_ROOT
 
 
 def base_frame() -> pd.DataFrame:
@@ -66,7 +71,7 @@ def base_frame() -> pd.DataFrame:
 
 
 def test_csv_dates_are_stored_as_datetime_and_used_for_duration(tmp_path: Path) -> None:
-    source = tmp_path / "yellow_tripdata_2025-01.csv"
+    source = tmp_path / "yellow_tripdata_2026-05.csv"
     frame = base_frame()
     frame.loc[1, "tpep_pickup_datetime"] = "not-a-date"
     frame.to_csv(source, index=False)
@@ -86,7 +91,7 @@ def test_csv_dates_are_stored_as_datetime_and_used_for_duration(tmp_path: Path) 
 
 
 def test_parquet_load_and_pandas_polars_sample_values_match(tmp_path: Path) -> None:
-    source = tmp_path / "yellow_tripdata_2025-01.parquet"
+    source = tmp_path / "yellow_tripdata_2026-05.parquet"
     frame = base_frame()
     frame["tpep_pickup_datetime"] = pd.to_datetime(frame["tpep_pickup_datetime"])
     frame["tpep_dropoff_datetime"] = pd.to_datetime(frame["tpep_dropoff_datetime"])
@@ -123,11 +128,11 @@ def test_sequential_load_validation_detects_mismatch(difference: str) -> None:
 
 
 def test_expected_month_and_actual_month_detection() -> None:
-    pickup = pd.Series(pd.to_datetime(["2025-01-01", "2025-02-01"]))
+    pickup = pd.Series(pd.to_datetime(["2026-05-01", "2026-06-01"]))
 
-    assert expected_month(Path("yellow_tripdata_2025-01.parquet")) == pd.Period("2025-01")
+    assert expected_month(Path("yellow_tripdata_2026-05.parquet")) == pd.Period("2026-05")
     assert expected_month(Path("yellow_taxi.csv")) is None
-    named = inspect_date_range(pickup, Path("yellow_tripdata_2025-01.parquet"))
+    named = inspect_date_range(pickup, Path("yellow_tripdata_2026-05.parquet"))
     unnamed = inspect_date_range(pickup, Path("yellow_taxi.csv"))
     assert named["has_multiple_months"] is True
     assert named["outside_source_month_rows"] == 1
@@ -154,7 +159,7 @@ def test_cleaning_removes_only_full_duplicates_core_missing_and_invalid_trips() 
     ]
     raw_df = pd.concat(rows, ignore_index=True)
 
-    cleaned_df, metrics = clean_data(raw_df, Path("yellow_tripdata_2025-01.csv"))
+    cleaned_df, metrics = clean_data(raw_df, Path("yellow_tripdata_2026-05.csv"))
 
     assert len(cleaned_df) == 2
     assert metrics["duplicate_rows_removed"] == 1
@@ -176,7 +181,7 @@ def test_error_candidates_are_flagged_and_preserved() -> None:
         ignore_index=True,
     )
 
-    cleaned_df, _ = clean_data(raw_df, Path("yellow_tripdata_2025-01.parquet"))
+    cleaned_df, _ = clean_data(raw_df, Path("yellow_tripdata_2026-05.parquet"))
 
     assert len(cleaned_df) == 4
     assert cleaned_df["is_long_trip_candidate"].sum() == 1
@@ -217,7 +222,8 @@ def test_unsupported_input_format_raises_clear_error(tmp_path: Path, library: st
 
 def test_cli_uses_default_or_user_supplied_input(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["prepare_data.py"])
-    assert parse_args().input == DEFAULT_INPUT
+    assert parse_args().input == DEFAULT_INPUT == DEFAULT_RAW_DATA
+    assert RUN_ALL_DEFAULT_RAW_DATA.relative_to(PROJECT_ROOT) == DEFAULT_RAW_DATA
 
     monkeypatch.setattr("sys.argv", ["prepare_data.py", "data/raw/other.parquet"])
     assert parse_args().input == Path("data/raw/other.parquet")
@@ -238,8 +244,8 @@ def paired_results(frame: pd.DataFrame):
         pandas_frame[column] = pd.to_datetime(pandas_frame[column], errors="coerce")
     polars_frame = pl.from_pandas(pandas_frame)
     pandas_eda, polars_eda = make_eda(pandas_frame), make_polars_eda(polars_frame)
-    pandas_cleaned, pandas_metrics = clean_data(pandas_frame, Path("yellow_tripdata_2025-01.csv"))
-    polars_cleaned, polars_metrics = clean_polars_data(polars_frame, Path("yellow_tripdata_2025-01.csv"))
+    pandas_cleaned, pandas_metrics = clean_data(pandas_frame, Path("yellow_tripdata_2026-05.csv"))
+    polars_cleaned, polars_metrics = clean_polars_data(polars_frame, Path("yellow_tripdata_2026-05.csv"))
     return pandas_eda, polars_eda, pandas_cleaned, polars_cleaned, pandas_metrics, polars_metrics
 
 
@@ -320,9 +326,9 @@ def test_meaningful_value_difference_is_detected() -> None:
 
 def rush_boundary_frame() -> pd.DataFrame:
     pickups = pd.to_datetime([
-        "2025-01-06 05:59", "2025-01-06 06:00", "2025-01-06 09:59", "2025-01-06 10:00",
-        "2025-01-06 15:59", "2025-01-06 16:00", "2025-01-06 19:59", "2025-01-06 20:00",
-        "2025-01-11 06:00", "2025-01-11 16:00",
+        "2026-05-04 05:59", "2026-05-04 06:00", "2026-05-04 09:59", "2026-05-04 10:00",
+        "2026-05-04 15:59", "2026-05-04 16:00", "2026-05-04 19:59", "2026-05-04 20:00",
+        "2026-05-09 06:00", "2026-05-09 16:00",
     ])
     row = base_frame().iloc[[0]]
     return pd.concat([
@@ -372,11 +378,11 @@ def test_rate_and_speed_derivatives_match() -> None:
 
 def test_outside_source_month_and_comparison_groups_match_in_polars() -> None:
     frame = rush_boundary_frame().iloc[[1, 3, 8]].copy()
-    frame.loc[frame.index[1], "tpep_pickup_datetime"] = pd.Timestamp("2025-02-03 12:00")
-    frame.loc[frame.index[1], "tpep_dropoff_datetime"] = pd.Timestamp("2025-02-03 12:30")
+    frame.loc[frame.index[1], "tpep_pickup_datetime"] = pd.Timestamp("2026-06-03 12:00")
+    frame.loc[frame.index[1], "tpep_dropoff_datetime"] = pd.Timestamp("2026-06-03 12:30")
 
-    pandas_cleaned, _ = clean_data(frame, Path("yellow_tripdata_2025-01.csv"))
-    polars_cleaned, _ = clean_polars_data(pl.from_pandas(frame), Path("yellow_tripdata_2025-01.csv"))
+    pandas_cleaned, _ = clean_data(frame, Path("yellow_tripdata_2026-05.csv"))
+    polars_cleaned, _ = clean_polars_data(pl.from_pandas(frame), Path("yellow_tripdata_2026-05.csv"))
 
     assert pandas_cleaned["is_outside_source_month"].tolist() == [False, True, False]
     assert polars_cleaned["is_outside_source_month"].to_list() == [False, True, False]

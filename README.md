@@ -26,11 +26,11 @@ NYC TLC Yellow Taxi CSV 또는 Parquet 파일을 `data/raw/`에 둡니다. 원�
 
 ```bash
 mkdir -p data/raw data/processed
-curl -fL https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2026-05.parque \
+curl -fL https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2026-05.parquet \
   -o data/raw/yellow_tripdata_2026-05.parquet
 .venv/bin/python src/run_all.py
-.venv/bin/python src/run_all.py data/raw/yellow_tripdata_YYYY-MM.parquet
-.venv/bin/python src/run_all.py data/raw/yellow_tripdata_YYYY-MM.csv
+.venv/bin/python src/run_all.py --input data/raw/yellow_tripdata_YYYY-MM.parquet
+.venv/bin/python src/run_all.py --input data/raw/yellow_tripdata_YYYY-MM.csv
 ```
 
 가상환경을 활성화한 상태에서는 다음과 같이 실행합니다.
@@ -51,7 +51,7 @@ python src/run_all.py
 data/raw/yellow_tripdata_2026-05.parquet
 ```
 
-다른 파일을 분석하려면 첫 번째 인수로 해당 파일 경로를 지정합니다. 위 URL은 이 저장소의 검증에 사용한 2025년 1월 예시입니다. 분석 대상 월이 정해지면 파일명과 URL의 월을 함께 변경합니다. 로딩 시간과 정제·EDA 시간은 한 프로세스에서 각 라이브러리를 한 번씩 측정한 참고값이며 OS 파일 캐시와 실행 환경에 따라 달라질 수 있습니다. 단일 실행 시간만으로 특정 라이브러리가 항상 더 빠르다고 단정하지 않습니다.
+다른 파일을 분석하려면 `--input`으로 해당 파일 경로를 지정합니다. 위 URL은 이 저장소의 분석에 사용한 2026년 5월 데이터입니다. 분석 대상 월이 정해지면 파일명과 URL의 월을 함께 변경합니다. 로딩 시간과 정제·EDA 시간은 한 프로세스에서 각 라이브러리를 한 번씩 측정한 참고값이며 OS 파일 캐시와 실행 환경에 따라 달라질 수 있습니다. 단일 실행 시간만으로 특정 라이브러리가 항상 더 빠르다고 단정하지 않습니다.
 
 기본 결과는 다음 위치에 생성됩니다.
 
@@ -88,7 +88,7 @@ Pandas와 Polars의 구조·결측치뿐 아니라 앞·뒤 각 최대 5행과 s
 - 이상치 후보 플래그는 데이터 오류를 확정한 값이 아니며, 이번 전처리 단계에서는 후보 행을 임의로 제거하지 않습니다.
 - 후속 시각화와 통계 검정에서는 이상치 후보를 포함한 결과와 제외한 결과를 함께 확인하여, 소수의 극단값이 이동시간과 미터 운임의 평균 차이 및 검정 결과에 미치는 영향을 점검해야 합니다. 두 분석의 결론이 달라질 경우 이상치 처리 기준과 결과의 민감성을 함께 보고해야 합니다.
 - 이상치 후보의 포함·제외 분석은 후속 시각화와 통계 분석 단계에서 수행하며, 이 단계에서는 데이터에서 확인하지 않은 수치나 분석 결론을 작성하지 않습니다.
-- 파일명에서 기준 연월을 추출한 경우에도 범위 밖 행은 준비 단계에서 삭제하지 않습니다. 2025년 1월을 주 분석 대상으로 한정할 때는 `is_outside_source_month == False`인 행을 사용하며, 범위 밖 행의 포함 여부는 후속 분석 목적에 따라 결정하고 필요하면 포함·제외 결과를 비교합니다.
+- 파일명에서 기준 연월을 추출한 경우에도 범위 밖 행은 준비 단계에서 삭제하지 않습니다. 2026년 5월을 주 분석 대상으로 한정할 때는 `is_outside_source_month == False`인 행을 사용하며, 범위 밖 행의 포함 여부는 후속 분석 목적에 따라 결정하고 필요하면 포함·제외 결과를 비교합니다.
 - 현재 출퇴근 시간대 분류는 요일만을 기준으로 하며, 평일 공휴일을 별도로 제외하지 않았습니다. 따라서 공휴일의 이동 특성이 평일 출퇴근 집단에 일부 포함될 수 있습니다.
 - 평일 비출퇴근 집단에는 새벽·주간·야간이 모두 포함되므로, 후속 회귀 또는 ML 분석에서는 승차 시각, 승하차 지역, 이동거리 등의 변수를 함께 고려해야 합니다.
 - 기존 이상치 후보를 제외해도 모든 파생 변수 극단값이 제거되는 것은 아닙니다. `fare_per_mile`과 `average_speed_mph`의 분포는 평균뿐 아니라 중앙값과 사분위수를 함께 확인하고, 현실적으로 해석하기 어려운 값은 포함·제외 결과를 비교해야 합니다.
