@@ -62,16 +62,6 @@ RANDOM_SEED = 42
 ALPHA = 0.05
 
 
-# 통계 분석에 필요한 컬럼만 읽기
-# ANALYSIS_COLUMNS = [
-#     "tpep_pickup_datetime",
-#     "trip_duration_min",
-#     "trip_distance",
-#     "fare_amount",
-#     "total_amount",
-#     "extra",
-# ]
-
 # 극단치 및 출퇴근 시간 고려
 ANALYSIS_COLUMNS = [
     "tpep_pickup_datetime",
@@ -92,8 +82,6 @@ ANALYSIS_COLUMNS = [
 
 
 # 2026년 5월의 출퇴근 패턴 분석에서 제외할 공휴일
-#
-# 주말 취급?
 HOLIDAYS = {
     pd.Timestamp("2026-05-25"),
 }
@@ -464,75 +452,6 @@ def make_extra_distribution(
             False,
         ],
     ).reset_index(drop=True)
-
-
-# =========================================================
-# Validation 분석 준비
-# =========================================================
-
-
-# def validate_commute_windows() -> None:
-#     """
-#     출퇴근 시간 설정값이 정상적인지 확인한다.
-#     """
-
-#     for name, (start, end) in COMMUTE_WINDOWS.items():
-#         if not (0 <= start < end <= 24):
-#             raise ValueError(f"{name} 시간 범위가 잘못되었습니다: " f"({start}, {end})")
-
-
-# def add_commute_features(
-#     df: pd.DataFrame,
-# ) -> pd.DataFrame:
-#     """
-#     확정된 출퇴근 시간대를 Validation 데이터에 적용한다.
-#     """
-
-#     validate_commute_windows()
-
-#     result = df.copy()
-
-#     result["is_commute_hour"] = False
-#     result["commute_period"] = "non_commute"
-
-#     for name, (start, end) in COMMUTE_WINDOWS.items():
-#         mask = result["pickup_hour"].ge(start) & result["pickup_hour"].lt(end)
-
-#         result.loc[
-#             mask,
-#             "is_commute_hour",
-#         ] = True
-
-#         result.loc[
-#             mask,
-#             "commute_period",
-#         ] = name
-
-#     result["commute_group"] = result["is_commute_hour"].map(
-#         {
-#             True: "commute",
-#             False: "non_commute",
-#         }
-#     )
-
-#     return result
-
-
-# def add_speed(
-#     df: pd.DataFrame,
-# ) -> pd.DataFrame:
-#     """
-#     이동거리와 이동시간을 이용해 평균 이동속도(mph)를 계산한다.
-
-#     speed_mph는 출퇴근 시간대 선정에는 사용하지 않고
-#     Validation 결과 해석에만 사용한다.
-#     """
-
-#     result = df.copy()
-
-#     result["speed_mph"] = result["trip_distance"] / (result["trip_duration_min"] / 60)
-
-#     return result
 
 
 # =========================================================
@@ -1102,26 +1021,8 @@ def main() -> int:
 
         print(hourly_profile.to_string(index=False))
 
-        # # -------------------------------------------------
-        # # 4. Discovery - extra 분포
-        # # -------------------------------------------------
-
-        # extra_distribution = make_extra_distribution(discovery_df)
-
-        # save_result(
-        #     extra_distribution,
-        #     args.output_dir / "extra_distribution_by_hour.csv",
-        # )
-
-        # print("\nDiscovery 결과가 생성되었습니다.")
-
-        # print(
-        #     "외부 자료로 설정한 출퇴근 시간대와 "
-        #     "Discovery 데이터의 패턴을 확인"
-        # )
-
         # -------------------------------------------------
-        # 5. Validation 분석
+        # 4. Validation 분석
         # -------------------------------------------------
         #
         # 주말과 평일을 섞어 비교하면
@@ -1163,15 +1064,7 @@ def main() -> int:
         print(f"제외 후: {len(validation_analysis):,}행")
 
         # -------------------------------------------------
-        # 출퇴근 구분
-        # -------------------------------------------------
-
-        # validation_analysis = add_commute_features(validation_analysis)
-
-        # validation_analysis = add_speed(validation_analysis)
-
-        # -------------------------------------------------
-        # 6. 기술통계
+        # 5. 기술통계
         # -------------------------------------------------
 
         descriptive = make_descriptive_statistics(validation_analysis)
@@ -1187,7 +1080,7 @@ def main() -> int:
         print(descriptive)
 
         # -------------------------------------------------
-        # 6-1. 오전 / 오후 / 평일 비출퇴근 기술통계
+        # 5-1. 오전 / 오후 / 평일 비출퇴근 기술통계
         # -------------------------------------------------
 
         rush_period_descriptive = make_rush_period_descriptive_statistics(
@@ -1205,7 +1098,7 @@ def main() -> int:
         print(rush_period_descriptive)
 
         # -------------------------------------------------
-        # 7. 상관계수
+        # 6. 상관계수
         # -------------------------------------------------
 
         correlation = make_correlation_matrix(validation_analysis)
@@ -1220,7 +1113,7 @@ def main() -> int:
         print(correlation)
 
         # -------------------------------------------------
-        # 8. Welch's t-test
+        # 7. Welch's t-test
         # -------------------------------------------------
 
         ttest_results = run_welch_ttests(validation_analysis)
@@ -1234,7 +1127,7 @@ def main() -> int:
         print(ttest_results.to_string(index=False))
 
         # -------------------------------------------------
-        # 9. 거리 통제 다변량 회귀 / Partial F-test
+        # 8. 거리 통제 다변량 회귀 / Partial F-test
         # -------------------------------------------------
 
         regression_result = run_distance_adjusted_regression(validation_analysis)
@@ -1249,7 +1142,7 @@ def main() -> int:
         print(regression_result.to_string(index=False))
 
         # -------------------------------------------------
-        # 9-1. 오전 / 오후 거리 통제 다변량 회귀
+        # 8-1. 오전 / 오후 거리 통제 다변량 회귀
         # -------------------------------------------------
 
         period_regression_result = run_period_distance_adjusted_regression(
