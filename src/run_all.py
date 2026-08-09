@@ -184,7 +184,6 @@ def main() -> int:
                     expected_outputs=[
                         STATISTICS_DIR / "split_dates.csv",
                         STATISTICS_DIR / "hourly_demand_profile.csv",
-                        STATISTICS_DIR / "extra_distribution_by_hour.csv",
                         STATISTICS_DIR / "descriptive_statistics.csv",
                         STATISTICS_DIR / "rush_period_descriptive_statistics.csv",
                         STATISTICS_DIR / "correlation_matrix.csv",
