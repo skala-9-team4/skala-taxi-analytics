@@ -28,21 +28,21 @@ NYC TLC Yellow Taxi CSV 또는 Parquet 파일을 `data/raw/`에 둡니다. 원�
 mkdir -p data/raw data/processed
 curl -fL https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2025-01.parquet \
   -o data/raw/yellow_tripdata_2025-01.parquet
-.venv/bin/python src/prepare_data.py
-.venv/bin/python src/prepare_data.py data/raw/yellow_tripdata_YYYY-MM.parquet
-.venv/bin/python src/prepare_data.py data/raw/yellow_tripdata_YYYY-MM.csv
+.venv/bin/python src/run_all.py
+.venv/bin/python src/run_all.py data/raw/yellow_tripdata_YYYY-MM.parquet
+.venv/bin/python src/run_all.py data/raw/yellow_tripdata_YYYY-MM.csv
 ```
 
 가상환경을 활성화한 상태에서는 다음과 같이 실행합니다.
 
 ```bash
-python src/prepare_data.py
+python src/run_all.py
 ```
 
 가상환경을 활성화하지 않았다면 프로젝트 가상환경의 Python을 직접 지정하여 실행할 수 있습니다.
 
 ```bash
-.venv/bin/python src/prepare_data.py
+.venv/bin/python src/run_all.py
 ```
 
 인수 없이 실행하면 다음 파일을 기본 입력으로 사용합니다.
