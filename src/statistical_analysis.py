@@ -1102,23 +1102,23 @@ def main() -> int:
 
         print(hourly_profile.to_string(index=False))
 
-        # -------------------------------------------------
-        # 4. Discovery - extra 분포
-        # -------------------------------------------------
+        # # -------------------------------------------------
+        # # 4. Discovery - extra 분포
+        # # -------------------------------------------------
 
-        extra_distribution = make_extra_distribution(discovery_df)
+        # extra_distribution = make_extra_distribution(discovery_df)
 
-        save_result(
-            extra_distribution,
-            args.output_dir / "extra_distribution_by_hour.csv",
-        )
+        # save_result(
+        #     extra_distribution,
+        #     args.output_dir / "extra_distribution_by_hour.csv",
+        # )
 
-        print("\nDiscovery 결과가 생성되었습니다.")
+        # print("\nDiscovery 결과가 생성되었습니다.")
 
-        print(
-            "외부 자료로 설정한 출퇴근 시간대와 "
-            "Discovery 데이터의 패턴을 확인했습니다."
-        )
+        # print(
+        #     "외부 자료로 설정한 출퇴근 시간대와 "
+        #     "Discovery 데이터의 패턴을 확인"
+        # )
 
         # -------------------------------------------------
         # 5. Validation 분석
